@@ -122,7 +122,7 @@ class Book:
         self._write('cover.xhtml', 'EPUB/cover.xhtml', cover=self._cover)
     
     def generate_cover(self):
-        image = PIL.Image.open(f"{pathlib.Path(__file__).parent.resolve()}/assets/blank_cover.png")
+        image = PIL.Image.open(f"{pathlib.Path(__file__).parent.resolve()}/templates/cover.png")
 
         width, height = image.size
 
