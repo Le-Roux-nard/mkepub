@@ -20,6 +20,10 @@ import pathlib
 import tempfile
 import uuid
 import zipfile
+import os
+import PIL
+import PIL.ImageDraw
+import PIL.ImageFont
 
 
 ###############################################################################
@@ -110,9 +114,50 @@ class Book:
 
     def set_cover(self, data):
         """Set the cover image to the given data."""
-        self._cover = 'cover.' + imghdr.what(None, h=data)
+        try:
+            self._cover = 'cover.' + imghdr.what(None, h=data)
+        except:
+            self._cover = "cover.jpg"
         self._add_file(pathlib.Path('covers') / self._cover, data)
         self._write('cover.xhtml', 'EPUB/cover.xhtml', cover=self._cover)
+    
+    def generate_cover(self):
+        image = PIL.Image.open(f"{pathlib.Path(__file__).parent.resolve()}/assets/blank_cover.png")
+
+        width, height = image.size
+
+        title_font = PIL.ImageFont.load_default(60)
+        series_font = PIL.ImageFont.load_default(30)
+        subseries_font = PIL.ImageFont.load_default(20)
+
+        title = self.title.split(",")[1]
+        series_name = self.metadata["collection"]["name"]
+        volume_number = "Volume " + self.metadata["collection"]["number"]
+
+        draw = PIL.ImageDraw.Draw(image)
+
+        title_bbox = title_font.getbbox(title)
+        series_name_bbox = series_font.getbbox(series_name)
+        volume_bbox = subseries_font.getbbox(volume_number)
+
+        title_size = (title_bbox[2] - title_bbox[0], title_bbox[3] - title_bbox[1])
+        series_name_size = (series_name_bbox[2] - series_name_bbox[0], series_name_bbox[3] - series_name_bbox[1])
+        volume_size = (volume_bbox[2] - volume_bbox[0], volume_bbox[3] - volume_bbox[1])
+
+        title_position = ((width - title_size[0]) // 2, height // 5)
+        series_name_position = ((width - series_name_size[0]) // 2, height // 2)
+        volume_position = ((width - volume_size[0]) // 2, 1.125 * height // 2)
+
+        draw.text(title_position, title, fill="white", font=title_font)
+        draw.text(series_name_position, series_name, fill="white", font=series_font)
+        draw.text(volume_position, volume_number, fill="white", font=subseries_font)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, self.title.lower().replace(" ", "-") + ".png")
+            image.save(path)
+            with open(path, "rb") as cover_stream:
+                self.set_cover(cover_stream.read())
+
 
     def set_stylesheet(self, data):
         """Set the stylesheet to the given css data."""
