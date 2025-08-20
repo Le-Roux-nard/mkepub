@@ -14,6 +14,13 @@
     {%- if author %}
     <dc:creator>{{ author|escape }}</dc:creator>
     {%- endif %}
+    {%- if collection %}
+      <meta property="belongs-to-collection" id="{{ collection['name']| lower | replace(' ', '-') }}">{{ collection["name"] | title }}</meta>
+      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="collection-type">series</meta>
+      {%- if collection["number"] %}
+      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="group-position">{{collection["number"]}}</meta>
+      {%- endif %}
+    {%- endif %}
     {%- for author in authors %}
     <dc:creator>{{ author|escape }}</dc:creator>
     {%- endfor %}
@@ -50,6 +57,7 @@
     {%- if cover %}
     <itemref idref="cover-xhtml" linear="yes"/>
     {%- endif %}
+    <itemref idref="htmltoc"/>
     {%- for page in pages %}
     <itemref idref="id-{{ page.page_id }}"/>
     {%- endfor %}
