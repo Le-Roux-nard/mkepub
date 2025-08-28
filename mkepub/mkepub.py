@@ -22,8 +22,36 @@ import uuid
 import zipfile
 import os
 import PIL
+import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
+import requests
+import io
+from typing import TypedDict, List
+
+
+class BookCollectionMetadata(TypedDict):
+    name: str
+    type: str
+    number: int
+
+
+class ContributorMetadata(TypedDict):
+    name: str
+    role: str
+
+
+class BookMetadata(TypedDict):
+    title: str
+    lang: str
+    date: str
+    collections: List[BookCollectionMetadata]
+    creators: List[ContributorMetadata]
+    contributors: List[ContributorMetadata]
+    subjects: List[str]
+    description: str
+    rights: str
+    cover: str
 
 
 ###############################################################################
@@ -65,10 +93,12 @@ Image = collections.namedtuple('Image', 'image_id name')
 class Book:
     """EPUB book."""
 
-    def __init__(self, title, **metadata):
+    def __init__(self, **metadata: BookMetadata):
         """"Create new book."""
-        self.title = title
-        self.metadata = metadata
+        if "title" not in metadata:
+            raise AttributeError(
+                "No 'title' specified, can't create EPUB3 Book")
+        self.metadata: BookMetadata = metadata
 
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = []
@@ -84,7 +114,6 @@ class Book:
             (self.path / dirname).mkdir()
 
         self.set_stylesheet('')
-        self._cover = None
 
     ###########################################################################
     # Public Methods
@@ -115,14 +144,16 @@ class Book:
     def set_cover(self, data):
         """Set the cover image to the given data."""
         try:
-            self._cover = 'cover.' + imghdr.what(None, h=data)
+            self.metadata["cover"] = 'cover.' + imghdr.what(None, h=data)
         except:
-            self._cover = "cover.jpg"
-        self._add_file(pathlib.Path('covers') / self._cover, data)
-        self._write('cover.xhtml', 'EPUB/cover.xhtml', cover=self._cover)
-    
+            self.metadata["cover"] = "cover.jpg"
+        self._add_file(pathlib.Path('covers') / self.metadata["cover"], data)
+        self._write('cover.xhtml', 'EPUB/cover.xhtml',
+                    cover=self.metadata["cover"])
+
     def generate_cover(self):
-        image = PIL.Image.open(f"{pathlib.Path(__file__).parent.resolve()}/templates/cover.png")
+        image = PIL.Image.open(
+            f"{pathlib.Path(__file__).parent.resolve()}/templates/cover.png")
 
         width, height = image.size
 
@@ -130,7 +161,7 @@ class Book:
         series_font = PIL.ImageFont.load_default(30)
         subseries_font = PIL.ImageFont.load_default(20)
 
-        title = self.title.split(",")[1]
+        title = self.metadata["title"].split(",")[1]
         series_name = self.metadata["collection"]["name"]
         volume_number = "Volume " + self.metadata["collection"]["number"]
 
@@ -157,7 +188,6 @@ class Book:
             image.save(path)
             with open(path, "rb") as cover_stream:
                 self.set_cover(cover_stream.read())
-
 
     def set_stylesheet(self, data):
         """Set the stylesheet to the given css data."""
@@ -206,20 +236,27 @@ class Book:
             title=page.title, body=content)
 
     def _write_spine(self):
+        # The following lines allow us to setup a default date but it also allows users to specify a publication date and their date will override the default date
+        book_metadata: BookMetadata = {
+            "date": datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            **self.metadata
+        }
         self._write(
-            'package.opf', 'EPUB/package.opf',
-            title=self.title,
-            date=datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'),
-            pages=list(self._flatten(self.root)), images=self.images,
-            fonts=self.fonts, uuid=self.uuid, cover=self._cover,
-            **self.metadata)
+            'package.opf',
+            'EPUB/package.opf',
+            pages=list(self._flatten(self.root)),
+            images=self.images,
+            fonts=self.fonts,
+            uuid=self.uuid,
+            **book_metadata
+        )
 
     def _write_toc(self):
         self._write(
-            'toc.xhtml', 'EPUB/toc.xhtml', pages=self.root, title=self.title)
+            'toc.xhtml', 'EPUB/toc.xhtml', pages=self.root, title=self.metadata["title"])
         self._write(
             'toc.ncx', 'EPUB/toc.ncx',
-            pages=self.root, title=self.title, uuid=self.uuid)
+            pages=self.root, title=self.metadata["title"], uuid=self.uuid)
 
     def _flatten(self, tree):
         for item in tree:
