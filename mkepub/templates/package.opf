@@ -11,18 +11,24 @@
     {% if dcterms %}{%- for name, value in dcterms.items() %}
     <meta property="dcterms:{{ name }}">{{ value }}</meta>
     {%- endfor %}{% endif %}
-    {%- if author %}
-    <dc:creator>{{ author|escape }}</dc:creator>
-    {%- endif %}
-    {%- if collection %}
-      <meta property="belongs-to-collection" id="{{ collection['name']| lower | replace(' ', '-') }}">{{ collection["name"] | title }}</meta>
-      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="collection-type">series</meta>
+    {%- for collection in collections %}
+      <meta property="belongs-to-collection" id="{{ collection['name']| lower | replace(' ', '-') }}">{{ collection["name"] | escape | title }}</meta>
+      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="collection-type">{{ collection["type"]| escape}}</meta>
       {%- if collection["number"] %}
-      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="group-position">{{collection["number"]}}</meta>
+      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="group-position">{{collection["number"]|escape}}</meta>
       {%- endif %}
-    {%- endif %}
-    {%- for author in authors %}
-    <dc:creator>{{ author|escape }}</dc:creator>
+    {%- endfor %}
+    {%- for creator in creators %}
+      <dc:creator id="creator-{{creator['name']|escape}}">{{ creator["name"]|escape }}</dc:creator>
+      {%- if creator["role"] %}
+      <meta refines="#creator-{{creator['name']|escape}}" property="role" scheme="marc:relators">{{creator['role']|escape}}</meta>
+      {%- endif %}
+    {%- endfor %}
+    {%- for contributor in contributors %}
+      <dc:contributor id="contributor-{{contributor['name']|escape}}">{{ contributor["name"]|escape }}</dc:contributor>
+      {%- if contributor["role"] %}
+      <meta refines="#contributor-{{contributor['name']|escape}}" property="role" scheme="marc:relators">{{contributor['role']|escape}}</meta>
+      {%- endif %}
     {%- endfor %}
     {%- for subject in subjects %}
     <dc:subject>{{ subject|escape }}</dc:subject>
