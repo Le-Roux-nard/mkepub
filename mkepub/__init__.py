@@ -1,1 +1,1 @@
-from .mkepub import Book
+from .mkepub import Book, BookMetadata, BookCollectionMetadata, ContributorMetadata
