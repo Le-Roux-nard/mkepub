@@ -12,10 +12,10 @@
     <meta property="dcterms:{{ name }}">{{ value }}</meta>
     {%- endfor %}{% endif %}
     {%- for collection in collections %}
-      <meta property="belongs-to-collection" id="{{ collection['name']| lower | replace(' ', '-') }}">{{ collection["name"] | escape | title }}</meta>
-      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="collection-type">{{ collection["type"]| escape}}</meta>
+      <meta property="belongs-to-collection" id="{{ collection['id'] }}">{{ collection["name"] | escape | title }}</meta>
+      <meta refines="#{{ collection['id'] }}" property="collection-type">{{ collection["type"]| escape}}</meta>
       {%- if collection["number"] %}
-      <meta refines="#{{ collection['name']| lower | replace(' ', '-') }}" property="group-position">{{collection["number"]|escape}}</meta>
+      <meta refines="#{{ collection['id'] }}" property="group-position">{{collection["number"]|escape}}</meta>
       {%- endif %}
     {%- endfor %}
     {%- for creator in creators %}

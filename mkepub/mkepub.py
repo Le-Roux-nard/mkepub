@@ -32,6 +32,7 @@ from typing import TypedDict, List
 
 class BookCollectionMetadata(TypedDict):
     name: str
+    id:str
     type: str
     number: int
 
