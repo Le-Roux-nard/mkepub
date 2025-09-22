@@ -14,7 +14,9 @@ creating epub files, by sacrificing most of the versatility of the format.
 import collections
 import datetime
 import imghdr
+import re
 import itertools
+from typing import Optional
 import jinja2
 import pathlib
 import tempfile
@@ -25,14 +27,13 @@ import PIL
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
-import requests
-import io
 from typing import TypedDict, List
+import xml.etree.ElementTree as ET
 
 
 class BookCollectionMetadata(TypedDict):
     name: str
-    id:str
+    id: str
     type: str
     number: int
 
@@ -87,6 +88,68 @@ env.filters['fonttype'] = fonttype
 
 ###############################################################################
 
+
+def _extract_default_ns(tag) -> Optional[str]:
+    tag_str = str(tag)
+    if tag_str.startswith("{") and "}" in tag_str:
+        return tag[1:tag_str.find("}")]
+    return None
+
+
+def _text(el):
+    return el.text.strip() if el is not None and el.text else None
+
+
+def _all_text(elems):
+    return [e.text.strip() for e in elems if e is not None and e.text and e.text.strip()]
+
+
+def _first_nonempty(values):
+    for v in values:
+        if v:
+            return v
+    return None
+
+
+def find_opf_package_path(container_bytes: bytes) -> str:
+    root = ET.fromstring(container_bytes)
+    CONTAINER_NS = {
+        "root_namespace": _extract_default_ns(root.tag)
+    }
+    OPF_MIMETYPE = "application/oebps-package+xml"
+
+    rootfiles = root.findall(
+        ".//root_namespace:rootfiles/root_namespace:rootfile", namespaces=CONTAINER_NS)
+
+    if not rootfiles:
+        rootfiles = root.findall(".//rootfile")
+
+    chosen = None
+    for rf in rootfiles:
+        if rf.get("media-type") is OPF_MIMETYPE:
+            chosen = rf
+            break
+    if chosen is None and rootfiles:
+        chosen = rootfiles[0]
+
+    if chosen is None:
+        raise ValueError("No rootfile found in container.xml")
+
+    full_path = chosen.get("full-path")
+    if not full_path:
+        raise ValueError(
+            "'full-path' attribute missing in rootfile element")
+
+    return full_path
+
+
+def find_refining_metadata(root_element: ET.ElementTree, root_namespace: str, refined_id: str, refined_property: str):
+    temp_namespace = {"root": root_namespace}
+    return root_element.find(f"root:meta[@property='{refined_property}'][@refines='#{refined_id}']", temp_namespace)
+
+
+###############################################################################
+
 Page = collections.namedtuple('Page', 'page_id title children')
 Image = collections.namedtuple('Image', 'image_id name')
 
@@ -115,6 +178,82 @@ class Book:
             (self.path / dirname).mkdir()
 
         self.set_stylesheet('')
+
+    @staticmethod
+    def read(epub_path: str):
+        with zipfile.ZipFile(epub_path, 'r') as archive:
+            decompressed_archive_path = tempfile.TemporaryDirectory().name
+            archive.extractall(path=decompressed_archive_path)
+            container_bytes = archive.read("META-INF/container.xml")
+            opf_package_path = find_opf_package_path(container_bytes)
+
+            opf_package_bytes = archive.read(opf_package_path)
+            package_root = ET.fromstring(opf_package_bytes)
+
+            PACKAGE_NAMESPACE = {
+                "package_root": _extract_default_ns(package_root.tag),
+                "dc": "http://purl.org/dc/elements/1.1/",
+                "dcterms": "http://purl.org/dc/terms/"
+            }
+
+            book_metadatas: BookMetadata = {}
+
+            metadatas = package_root.find(
+                "package_root:metadata", PACKAGE_NAMESPACE)
+
+            book_metadatas["title"] = _text(
+                metadatas.find("dc:title", PACKAGE_NAMESPACE))
+            book_metadatas["lang"] = _text(
+                metadatas.find("dc:language", PACKAGE_NAMESPACE))
+            book_metadatas["description"] = _text(
+                metadatas.find("dc:description", PACKAGE_NAMESPACE))
+            book_metadatas["subjects"] = _all_text(
+                metadatas.findall("dc:subject", PACKAGE_NAMESPACE))
+
+            # creators = metadatas.findall("dc:creator", PACKAGE_NAMESPACE)
+            # contributors = metadatas.findall("dc:contributor", PACKAGE_NAMESPACE)
+            def get_contributor_metadata(contrib) -> ContributorMetadata:
+                return {
+                    "name": _text(contrib),
+                    "role": _text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], contrib.get("id"), "role"))
+                }
+
+            book_metadatas["creators"] = list(map(get_contributor_metadata, metadatas.findall("dc:creator", PACKAGE_NAMESPACE)))
+            book_metadatas["contributors"] = list(map(get_contributor_metadata, metadatas.findall("dc:contributor", PACKAGE_NAMESPACE)))
+            
+            def get_collection_metadata(collec) -> BookCollectionMetadata:
+                return {
+                    "id": collec.get("id"),
+                    "name": _text(collec),
+                    "type": _text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "collection-type")),
+                    "number": int(_text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "group-position"))) or 0
+                }
+            
+            book_metadatas["collections"] = list(map(get_collection_metadata, metadatas.findall("package_root:meta[@property='belongs-to-collection']", PACKAGE_NAMESPACE)))
+
+            book_metadatas["date"] = _text(metadatas.find("package_root:meta[@property='dcterms:modified']", PACKAGE_NAMESPACE))
+            book_metadatas["rights"] = _text(metadatas.find("package_root:meta[@property='dcterms:rights']", PACKAGE_NAMESPACE))
+            
+            manifest = package_root.find(
+                "package_root:manifest", PACKAGE_NAMESPACE)
+            spine = package_root.find(
+                "package_root:spine", PACKAGE_NAMESPACE)
+
+            book_cover_archive_path = manifest.find("package_root:item[@properties='cover-image']", PACKAGE_NAMESPACE).get("href")
+            book_cover_archive_path = os.sep.join(re.split(r"\\|\/", book_cover_archive_path))
+            book_cover_archive_start_dir = os.sep.join(re.split(r"\\|\/", opf_package_path)[:-1])
+
+            book_cover_path = [decompressed_archive_path, book_cover_archive_start_dir, book_cover_archive_path]
+            book_cover_path = pathlib.Path(os.sep.join(book_cover_path)).resolve() 
+
+            new_book = Book(**book_metadatas)
+
+            with open(book_cover_path, "rb") as new_book_cover:
+                new_book.set_cover(new_book_cover.read())
+
+            archive.close()
+            return new_book 
+
 
     ###########################################################################
     # Public Methods
@@ -185,10 +324,14 @@ class Book:
         draw.text(volume_position, volume_number, fill="white", font=subseries_font)
 
         with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, self.title.lower().replace(" ", "-") + ".png")
+            path = os.path.join(
+                tmp, self.title.lower().replace(" ", "-") + ".png")
             image.save(path)
             with open(path, "rb") as cover_stream:
                 self.set_cover(cover_stream.read())
+                cover_stream.close()
+            os.unlink(path)
+            
 
     def set_stylesheet(self, data):
         """Set the stylesheet to the given css data."""
