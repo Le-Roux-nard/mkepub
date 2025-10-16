@@ -59,7 +59,7 @@ class BookMetadata(TypedDict):
 ###############################################################################
 
 def mediatype(name):
-    ext = name.split('.')[-1].lower()
+    ext = str(name).split('.')[-1].lower()
     if ext not in ('png', 'jpg', 'jpeg', 'gif', 'svg'):
         raise ValueError('Image format "{}" is not supported.'.format(ext))
     if ext == 'jpg':
@@ -81,10 +81,13 @@ def fonttype(name):
         raise ValueError('Font format "{}" is not supported.'.format(ext))
     return mimetypes[ext]
 
+def format_path(path:str):
+    return str(path).replace("\\", "/")
 
 env = jinja2.Environment(loader=jinja2.PackageLoader('mkepub'))
 env.filters['mediatype'] = mediatype
 env.filters['fonttype'] = fonttype
+env.filters['format_path'] = format_path
 
 ###############################################################################
 
@@ -150,8 +153,9 @@ def find_refining_metadata(root_element: ET.ElementTree, root_namespace: str, re
 
 ###############################################################################
 
-Page = collections.namedtuple('Page', 'page_id title children')
+Page = collections.namedtuple('Page', 'page_id title path stylesheets children')
 Image = collections.namedtuple('Image', 'image_id name')
+Stylesheet = collections.namedtuple('Stylesheet', 'stylesheet_id path')
 
 
 class Book:
@@ -168,24 +172,28 @@ class Book:
         self.root = []
         self.fonts = []
         self.images = []
+        self.stylesheets = []
         self.uuid = uuid.uuid4()
         self._page_id = map('{:04}'.format, itertools.count(1))
         self._image_id = map('{:03}'.format, itertools.count(1))
+        self._stylesheet_id = map('{:03}'.format, itertools.count(1))
+        self.root_folder= "EPUB/"
+        self.package_file = f"{ self.root_folder}/container.opf"
 
         self.path = pathlib.Path(self.tempdir.name).resolve()
-        for dirname in [
-                'EPUB', 'META-INF', 'EPUB/images', 'EPUB/css', 'EPUB/covers']:
-            (self.path / dirname).mkdir()
+        # for dirname in [
+        #         {self.root_folder}, 'META-INF', f'{self.root_folder}/images', f'{self.root_folder}/css', 'EPUB/covers', 'EPUB/pages']:
+        #     (self.path / dirname).mkdir()
 
-        self.set_stylesheet('')
 
     @staticmethod
     def read(epub_path: str):
         with zipfile.ZipFile(epub_path, 'r') as archive:
-            decompressed_archive_path = tempfile.TemporaryDirectory().name
+            decompressed_archive_path = pathlib.Path(tempfile.TemporaryDirectory().name)
             archive.extractall(path=decompressed_archive_path)
             container_bytes = archive.read("META-INF/container.xml")
             opf_package_path = find_opf_package_path(container_bytes)
+            epub_root_dir = os.sep.join(re.split(r"\\|\/", opf_package_path)[:-1])
 
             opf_package_bytes = archive.read(opf_package_path)
             package_root = ET.fromstring(opf_package_bytes)
@@ -236,20 +244,56 @@ class Book:
             
             manifest = package_root.find(
                 "package_root:manifest", PACKAGE_NAMESPACE)
-            spine = package_root.find(
-                "package_root:spine", PACKAGE_NAMESPACE)
 
             book_cover_archive_path = manifest.find("package_root:item[@properties='cover-image']", PACKAGE_NAMESPACE).get("href")
             book_cover_archive_path = os.sep.join(re.split(r"\\|\/", book_cover_archive_path))
-            book_cover_archive_start_dir = os.sep.join(re.split(r"\\|\/", opf_package_path)[:-1])
 
-            book_cover_path = [decompressed_archive_path, book_cover_archive_start_dir, book_cover_archive_path]
-            book_cover_path = pathlib.Path(os.sep.join(book_cover_path)).resolve() 
+            book_cover_path = decompressed_archive_path / epub_root_dir / book_cover_archive_path
 
             new_book = Book(**book_metadatas)
 
+            new_book.root_folder = "/".join(re.split(r"\\|\/", opf_package_path)[:-1])
+            new_book.package_file = opf_package_path
+
             with open(book_cover_path, "rb") as new_book_cover:
                 new_book.set_cover(new_book_cover.read())
+
+            manifest_items = manifest.findall("package_root:item", PACKAGE_NAMESPACE)
+            pages_map = {}
+            for item in manifest_items:
+                if item.get("properties") == "cover-image":
+                    continue
+                elif item.get("media-type").startswith("application/") and item.get("media-type") != "application/xhtml+xml":
+                    # Should only ignore ToC (will be regenerated dynamically zin case of page modification later on)
+                    continue
+                elif item.get("href") in ["toc.xhtml", "cover.xhtml"]:
+                    continue
+                else:
+                    pass
+                    package_relative_path = item.get("href")
+                    abs_path = decompressed_archive_path / epub_root_dir / package_relative_path
+                    destination_path = pathlib.Path(package_relative_path)
+                    with open(abs_path, "rb") as item_data:
+                        # print(f"copying file {package_relative_path} from {abs_path} to {destination_path}")
+                        new_book._add_file(destination_path, item_data.read())
+                        item_data.close()
+
+                    if item.get("media-type") == "application/xhtml+xml":
+                        with open(abs_path, "r", encoding="UTF-8") as page_data:
+                            page_id = item.get("id")
+                            page_title = re.search(r"(?<=<title>).+?(?=</title>)", page_data.read())[0]
+                            page_data.close()
+                            pages_map[page_id] = Page(page_id, page_title, package_relative_path, None, [])
+                            next(new_book._page_id)
+            
+            spine = package_root.find("package_root:spine", PACKAGE_NAMESPACE)
+            spine_items = spine.findall("package_root:itemref", PACKAGE_NAMESPACE)
+
+            for itemref in spine_items:
+                page_id = itemref.get("idref")
+                if page_id in pages_map:
+                    matching_page_data = pages_map[page_id]
+                    new_book.root.append(matching_page_data)
 
             archive.close()
             return new_book 
@@ -259,22 +303,27 @@ class Book:
     # Public Methods
     ###########################################################################
 
-    def add_page(self, title, content, parent=None):
+    def add_page(self, title, content, parent=None, stylesheets=None, custom_path=None):
         """
         Add a new page.
 
         The page will be added as a subpage of the parent. If no parent is
         provided, the page will be added to the root of the book.
         """
-        page = Page(next(self._page_id), title, [])
+        page_id = next(self._page_id)
+        page_path = 'pages/page{}.xhtml'.format(page_id) if not custom_path else custom_path
+        page_stylesheets = self.stylesheets if stylesheets is None else stylesheets
+
+        page = Page(page_id, title, page_path, page_stylesheets, [])
         self.root.append(page) if not parent else parent.children.append(page)
         self._write_page(page, content)
         return page
 
-    def add_image(self, name, data):
+    def add_image(self, name, data, custom_path):
         """Add image file."""
-        self.images.append(Image(next(self._image_id), name))
-        self._add_file(pathlib.Path('images') / name, data)
+        image_path = pathlib.Path('images') / name if not custom_path else custom_path
+        self.images.append(Image(next(self._image_id), image_path))
+        self._add_file(image_path, data)
 
     def add_font(self, name, data):
         """Add font file."""
@@ -284,12 +333,12 @@ class Book:
     def set_cover(self, data):
         """Set the cover image to the given data."""
         try:
-            self.metadata["cover"] = 'cover.' + imghdr.what(None, h=data)
+            cover_name = 'cover.' + imghdr.what(None, h=data)
         except:
-            self.metadata["cover"] = "cover.jpg"
-        self._add_file(pathlib.Path('covers') / self.metadata["cover"], data)
-        self._write('cover.xhtml', 'EPUB/cover.xhtml',
-                    cover=self.metadata["cover"])
+            cover_name = "cover.jpg"
+        self.metadata["cover"] = pathlib.Path('covers') / cover_name
+        self._add_file(self.metadata["cover"], data)
+        
 
     def generate_cover(self):
         image = PIL.Image.open(
@@ -333,18 +382,21 @@ class Book:
             os.unlink(path)
             
 
-    def set_stylesheet(self, data):
+    def add_stylesheet(self, name="stylesheet.css", data="", custom_path=None):
         """Set the stylesheet to the given css data."""
-        self._add_file(
-            pathlib.Path('css') / 'stylesheet.css', data.encode('utf-8'))
+        stylesheet_path = str(pathlib.Path('css') / name if not custom_path else custom_path).replace("\\", "/")
+
+        self.stylesheets.append(Stylesheet(next(self._stylesheet_id), stylesheet_path))
+        self._add_file(stylesheet_path, data.encode('utf-8'))
 
     def save(self, filename):
         """Save book to a file."""
         if pathlib.Path(filename).exists():
             raise FileExistsError
         self._write_spine()
-        self._write('container.xml', 'META-INF/container.xml')
+        self._write_container()
         self._write_toc()
+        self._write_cover()
         with open(str(self.path / 'mimetype'), 'w') as file:
             file.write('application/epub+zip')
         with zipfile.ZipFile(filename, 'w') as archive:
@@ -362,22 +414,37 @@ class Book:
 
     def _add_file(self, name, data):
         """Add a file."""
-        filepath = self.path / 'EPUB' / name
-        if not filepath.parent.exists():
-            filepath.parent.mkdir()
+        filepath = self.path / self.root_folder / name
+        folderpath = filepath.parent
+        # recursively create needed folder to fit provided path
+        if not folderpath.exists():
+            needed_folders = []
+            tested_folder = folderpath
+            while not tested_folder.exists():
+                needed_folders.append(tested_folder)
+                tested_folder = tested_folder.parent
+            
+            needed_folders.reverse()
+            for folder in needed_folders:
+                folder.mkdir()
 
         with open(str(filepath), 'wb') as file:
             file.write(data)
 
     def _write(self, template, path, **data):
-        with open(str(self.path / path), 'w', encoding='utf-8') as file:
+        filepath = self.path / path
+        if not filepath.parent.exists():
+            filepath.parent.mkdir()
+        with open(filepath, 'w', encoding='utf-8') as file:
             file.write(env.get_template(template).render(**data))
 
     def _write_page(self, page, content):
         """Write the contents of the page into an html file."""
+
+        stylesheets = list(map(lambda x: str(self._find_shortest_path_to_relative_file(page.path, x.path)), page.stylesheets))
         self._write(
-            'page.xhtml', 'EPUB/page{}.xhtml'.format(page.page_id),
-            title=page.title, body=content)
+            'page.xhtml', page.path,
+            title=page.title, body=content, stylesheets=stylesheets)
 
     def _write_spine(self):
         # The following lines allow us to setup a default date but it also allows users to specify a publication date and their date will override the default date
@@ -387,22 +454,37 @@ class Book:
         }
         self._write(
             'package.opf',
-            'EPUB/package.opf',
+            self.package_file,
             pages=list(self._flatten(self.root)),
             images=self.images,
             fonts=self.fonts,
+            stylesheets=self.stylesheets,
             uuid=self.uuid,
             **book_metadata
         )
 
     def _write_toc(self):
         self._write(
-            'toc.xhtml', 'EPUB/toc.xhtml', pages=self.root, title=self.metadata["title"])
+            'toc.xhtml', f'{self.root_folder}/toc.xhtml', pages=self.root, title=self.metadata["title"], stylesheets=self.stylesheets)
         self._write(
-            'toc.ncx', 'EPUB/toc.ncx',
-            pages=self.root, title=self.metadata["title"], uuid=self.uuid)
+            'toc.ncx', f'{self.root_folder}/toc.ncx',
+            pages=self.root, title=self.metadata["title"], uuid=self.uuid, stylesheets=self.stylesheets)        
+
+    def _write_container(self):
+        self._write(
+            'container.xml', 'META-INF/container.xml',
+            package_path=self.package_file)
+        
+    def _write_cover(self):
+        self._write('cover.xhtml', f'{self.root_folder}/pages/cover.xhtml', cover=self.metadata["cover"])
 
     def _flatten(self, tree):
         for item in tree:
             yield item
             yield from self._flatten(item.children)
+
+    def _find_shortest_path_to_relative_file(self, source_path, destination_path):
+        src_dir = pathlib.Path(source_path).resolve(strict=False).parent
+        dst_abs = pathlib.Path(destination_path).resolve(strict=False)
+
+        return str(pathlib.Path(os.path.relpath(dst_abs, start=src_dir))).replace(os.sep, "/")

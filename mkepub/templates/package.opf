@@ -44,13 +44,16 @@
   <manifest>
     <item id="htmltoc" properties="nav" media-type="application/xhtml+xml" href="toc.xhtml"/>
     <item href="toc.ncx" id="toc" media-type="application/x-dtbncx+xml"/>
-    <item media-type="text/css" id="css" href="css/stylesheet.css"/>
+    {%- for stylesheet in stylesheets %}
+    <item media-type="text/css" id="css-{{ stylesheet.stylesheet_id }}" href="{{ stylesheet.path }}"/>
+    {%- endfor %}
+
     {%- if cover %}
     <item id="cover-xhtml" href="cover.xhtml" media-type="application/xhtml+xml"/>
-    <item id="cover" properties="cover-image" href="covers/{{ cover }}" media-type="{{ cover|mediatype }}"/>
+    <item id="cover" properties="cover-image" href="{{ cover | format_path }}" media-type="{{ cover|mediatype }}"/>
     {%- endif %}
     {%- for page in pages %}
-    <item id="id-{{ page.page_id }}" href="page{{ page.page_id }}.xhtml" media-type="application/xhtml+xml"/>
+    <item id="id-{{ page.page_id }}" href="{{ page.path }}" media-type="application/xhtml+xml"/>
     {%- endfor %}
     {% for image in images %}
     <item id="id-im{{ image.image_id }}" href="images/{{ image.name }}" media-type="{{ image.name|mediatype }}"/>

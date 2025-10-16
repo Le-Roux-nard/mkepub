@@ -4,7 +4,9 @@
   lang="en">
   <head>
     <title>{{ title }}</title>
-    <link rel="stylesheet" type="text/css" href="css/stylesheet.css" />
+    {%- for stylesheet in stylesheets %}
+    <link rel="stylesheet" type="text/css" href="{{ stylesheet.path }}" />
+    {%- endfor %}
   </head>
   <body>
     <h1>{{ title }}</h1>
@@ -13,7 +15,7 @@
       <ol>
       {%- for page in pages recursive %}
         <li>
-          <a href="page{{ page.page_id }}.xhtml">{{ page.title }}</a>
+          <a href="{{ page.path }}">{{ page.title }}</a>
           {%- if page.children %}
           <ol>{{ loop(page.children) }}</ol>
           {%- endif %}

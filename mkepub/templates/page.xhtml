@@ -3,7 +3,9 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en" lang="en">
   <head>
     <title>{{ title }}</title>
-    <link href="css/stylesheet.css" rel="stylesheet" type="text/css"/>
+    {%- for stylesheet in stylesheets %}
+    <link rel="stylesheet" type="text/css" href="{{ stylesheet }}" />
+    {%- endfor %}
   </head>
   <body>
     {{ body }}

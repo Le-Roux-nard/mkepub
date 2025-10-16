@@ -10,11 +10,11 @@
     </docTitle>
     <navMap>
         {%- for page in pages recursive %}
-        <navPoint id="id-{{ page.page_id }}" playOrder="{{ page.page_id.lstrip('0') }}">
+        <navPoint id="id-{{ page.page_id }}" playOrder="{{ loop.index }}">
             <navLabel>
                 <text>{{ page.title }}</text>
             </navLabel>
-            <content src="page{{ page.page_id }}.xhtml"/>
+            <content src="{{ page.path }}"/>
             {%- if page.children %}
             {{ loop(page.children) }}
             {%- endif %}
