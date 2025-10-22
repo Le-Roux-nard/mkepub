@@ -269,7 +269,6 @@ class Book:
                 elif item.get("href") in ["toc.xhtml", "cover.xhtml"]:
                     continue
                 else:
-                    pass
                     package_relative_path = item.get("href")
                     abs_path = decompressed_archive_path / epub_root_dir / package_relative_path
                     destination_path = pathlib.Path(package_relative_path)
