@@ -264,7 +264,7 @@ class Book:
                 if item.get("properties") == "cover-image":
                     continue
                 elif item.get("media-type").startswith("application/") and item.get("media-type") != "application/xhtml+xml":
-                    # Should only ignore ToC (will be regenerated dynamically zin case of page modification later on)
+                    # Should only ignore ToC (will be regenerated dynamically in case of page modification later on)
                     continue
                 elif item.get("href") in ["toc.xhtml", "cover.xhtml"]:
                     continue
