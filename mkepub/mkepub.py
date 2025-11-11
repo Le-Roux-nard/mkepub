@@ -350,9 +350,9 @@ class Book:
         subseries_font = PIL.ImageFont.load_default(20)
 
         title = self.metadata["title"]
-        if len(self.metadata["collection"]) > 0:
-            series_name = self.metadata["collection"][0]["name"] 
-            volume_number = "Volume " + self.metadata["collection"][0]["number"]
+        if len(self.metadata["collections"]) > 0:
+            series_name = self.metadata["collections"][0]["name"] 
+            volume_number = "Volume " + self.metadata["collections"][0]["number"]
         else:
             series_name = ""
             volume_number = ""
