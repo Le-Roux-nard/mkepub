@@ -377,7 +377,7 @@ class Book:
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(
-                tmp, self.title.lower().replace(" ", "-") + ".png")
+                tmp, title.lower().replace(" ", "-") + ".png")
             image.save(path)
             with open(path, "rb") as cover_stream:
                 self.set_cover(cover_stream.read())
