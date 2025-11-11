@@ -349,7 +349,7 @@ class Book:
         series_font = PIL.ImageFont.load_default(30)
         subseries_font = PIL.ImageFont.load_default(20)
 
-        title = self.metadata["title"].split(",")[1]
+        title = self.metadata["title"]
         series_name = self.metadata["collection"]["name"]
         volume_number = "Volume " + self.metadata["collection"]["number"]
 
