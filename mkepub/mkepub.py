@@ -399,7 +399,8 @@ class Book:
         self._write_spine()
         self._write_container()
         self._write_toc()
-        self._write_cover()
+        if "cover" in self.metadata:
+            self._write_cover()
         with open(str(self.path / 'mimetype'), 'w') as file:
             file.write('application/epub+zip')
         with zipfile.ZipFile(filename, 'w') as archive:
@@ -415,11 +416,8 @@ class Book:
     # Private Methods
     ###########################################################################
 
-    def _add_file(self, name, data):
-        """Add a file."""
-        filepath = self.path / self.root_folder / name
-        folderpath = filepath.parent
-        # recursively create needed folder to fit provided path
+    def _create_needed_folders(self, path):
+        folderpath = path.parent
         if not folderpath.exists():
             needed_folders = []
             tested_folder = folderpath
@@ -430,14 +428,19 @@ class Book:
             needed_folders.reverse()
             for folder in needed_folders:
                 folder.mkdir()
+        return
+
+    def _add_file(self, name, data):
+        """Add a file."""
+        filepath = self.path / self.root_folder / name
+        self._create_needed_folders(filepath)        
 
         with open(str(filepath), 'wb') as file:
             file.write(data)
 
     def _write(self, template, path, **data):
         filepath = self.path / path
-        if not filepath.parent.exists():
-            filepath.parent.mkdir()
+        self._create_needed_folders(filepath)
         with open(filepath, 'w', encoding='utf-8') as file:
             file.write(env.get_template(template).render(**data))
 
@@ -446,7 +449,7 @@ class Book:
 
         stylesheets = list(map(lambda x: str(self._find_shortest_path_to_relative_file(page.path, x.path)), page.stylesheets))
         self._write(
-            'page.xhtml', page.path,
+            'page.xhtml', f"{self.root_folder}/{page.path}",
             title=page.title, body=content, stylesheets=stylesheets)
 
     def _write_spine(self):
