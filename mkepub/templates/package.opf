@@ -49,8 +49,10 @@
     {%- endfor %}
 
     {%- if cover %}
-    <item id="cover-xhtml" href="cover.xhtml" media-type="application/xhtml+xml"/>
     <item id="cover" properties="cover-image" href="{{ cover | format_path }}" media-type="{{ cover|mediatype }}"/>
+      {%- if cover_as_first_page %}
+      <item id="cover-xhtml" href="cover.xhtml" media-type="application/xhtml+xml"/>
+      {%- endif %}
     {%- endif %}
     {%- for page in pages %}
     <item id="id-{{ page.page_id }}" href="{{ page.path }}" media-type="application/xhtml+xml"/>
@@ -63,10 +65,12 @@
     {%- endfor %}
   </manifest>
   <spine toc="toc">
-    {%- if cover %}
+    {%- if cover and cover_as_first_page %}
     <itemref idref="cover-xhtml" linear="yes"/>
     {%- endif %}
+    {%- if toc_visible %}
     <itemref idref="htmltoc"/>
+    {%- endif %}
     {%- for page in pages %}
     <itemref idref="id-{{ page.page_id }}"/>
     {%- endfor %}

@@ -392,14 +392,14 @@ class Book:
         self.stylesheets.append(Stylesheet(next(self._stylesheet_id), stylesheet_path))
         self._add_file(stylesheet_path, data.encode('utf-8'))
 
-    def save(self, filename):
+    def save(self, filename:str, with_visible_toc: bool=True, with_cover_as_first_page:bool = True):
         """Save book to a file."""
         if pathlib.Path(filename).exists():
             raise FileExistsError
-        self._write_spine()
+        self._write_spine(with_visible_toc, with_cover_as_first_page)
         self._write_container()
         self._write_toc()
-        if "cover" in self.metadata:
+        if "cover" in self.metadata and with_cover_as_first_page is True:
             self._write_cover()
         with open(str(self.path / 'mimetype'), 'w') as file:
             file.write('application/epub+zip')
@@ -452,7 +452,7 @@ class Book:
             'page.xhtml', f"{self.root_folder}/{page.path}",
             title=page.title, body=content, stylesheets=stylesheets)
 
-    def _write_spine(self):
+    def _write_spine(self, with_visible_toc: bool, with_cover_as_first_page: bool):
         # The following lines allow us to setup a default date but it also allows users to specify a publication date and their date will override the default date
         book_metadata: BookMetadata = {
             "date": datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -466,6 +466,8 @@ class Book:
             fonts=self.fonts,
             stylesheets=self.stylesheets,
             uuid=self.uuid,
+            toc_visible=with_visible_toc,
+            cover_as_first_page= with_cover_as_first_page,
             **book_metadata
         )
 
@@ -482,7 +484,7 @@ class Book:
             package_path=self.package_file)
         
     def _write_cover(self):
-        self._write('cover.xhtml', f'{self.root_folder}/pages/cover.xhtml', cover=self.metadata["cover"])
+        self._write('cover.xhtml', f'{self.root_folder}/cover.xhtml', cover=self.metadata["cover"])
 
     def _flatten(self, tree):
         for item in tree:
