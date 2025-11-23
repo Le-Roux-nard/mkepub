@@ -177,7 +177,7 @@ class Book:
         self._page_id = map('{:04}'.format, itertools.count(1))
         self._image_id = map('{:03}'.format, itertools.count(1))
         self._stylesheet_id = map('{:03}'.format, itertools.count(1))
-        self.root_folder= "EPUB/"
+        self.root_folder= "EPUB"
         self.package_file = f"{ self.root_folder}/container.opf"
 
         self.path = pathlib.Path(self.tempdir.name).resolve()
@@ -350,7 +350,7 @@ class Book:
         subseries_font = PIL.ImageFont.load_default(20)
 
         title = self.metadata["title"]
-        if len(self.metadata["collections"]) > 0:
+        if "collections" in self.metadata and len(self.metadata["collections"]) > 0:
             series_name = self.metadata["collections"][0]["name"] 
             volume_number = "Volume " + self.metadata["collections"][0]["number"]
         else:
