@@ -147,7 +147,7 @@ def find_opf_package_path(container_bytes: bytes) -> str:
 
 def find_refining_metadata(root_element: ET.ElementTree, root_namespace: str, refined_id: str, refined_property: str):
     temp_namespace = {"root": root_namespace}
-    return root_element.find(f"root:meta[@property='{refined_property}'][@refines='#{refined_id}']", temp_namespace)
+    return root_element.find(f"""root:meta[@property="{refined_property}"][@refines="#{refined_id}"]""", temp_namespace)
 
 
 ###############################################################################
