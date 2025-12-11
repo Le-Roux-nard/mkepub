@@ -16,7 +16,7 @@ import datetime
 import imghdr
 import re
 import itertools
-from typing import Optional
+from typing import Optional, TypeVar, TypedDict, List
 import jinja2
 import pathlib
 import tempfile
@@ -27,7 +27,6 @@ import PIL
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
-from typing import TypedDict, List
 import xml.etree.ElementTree as ET
 
 
@@ -157,7 +156,7 @@ Page = collections.namedtuple('Page', 'page_id title path stylesheets children')
 Image = collections.namedtuple('Image', 'image_id name')
 Stylesheet = collections.namedtuple('Stylesheet', 'stylesheet_id path')
 
-
+BookT = TypeVar("T", bound="Book")
 class Book:
     """EPUB book."""
 
@@ -297,6 +296,60 @@ class Book:
             archive.close()
             return new_book 
 
+    @classmethod
+    # TODO: Implement this and allow to merge more than two books by replacing books definition with (book_class:[type[BookT], *books:BookT)
+    def merge(book_class:type[BookT], merged_metadata:BookMetadata, *books) -> BookT:
+        def _safe_dir_name(title: str) -> str:
+            # create a filesystem-safe directory name from title
+            if not title:
+                return "untitled"
+            # replace path separators and non-word chars with hyphens
+            name = re.sub(r"[\\/]+", "-", title)
+            name = re.sub(r"[^\w\-\. ]+", "-", name)
+            name = name.strip().replace(" ", "-")
+            return name or "untitled"
+
+        new_book = book_class(**merged_metadata)
+
+        for src in books:
+            title = src.metadata.get("title") if src and "title" in src.metadata else None
+            subdir = _safe_dir_name(title)
+
+            src_root = pathlib.Path(src.path) / src.root_folder
+            if not src_root.exists():
+                continue
+
+            # copy all files from source book root folder into a subdirectory named after the title
+            for file in src_root.rglob("*.*"):
+                if file.is_dir():
+                    continue
+                rel = file.relative_to(src_root)
+                target_rel = pathlib.Path(subdir) / rel
+                with open(file, "rb") as fh:
+                    data = fh.read()
+                    new_book._add_file(target_rel, data)
+                    fh.close()
+
+
+                # register assets in the new book lists
+                suffix = file.suffix.lower()
+                if suffix == ".css":
+                    new_book.stylesheets.append(Stylesheet(next(new_book._stylesheet_id), str(target_rel).replace("\\", "/")))
+                elif suffix in (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"):
+                    new_book.images.append(Image(next(new_book._image_id), target_rel))
+                elif suffix in (".otf", ".ttf", ".woff", ".woff2"):
+                    new_book.fonts.append(str(target_rel).replace("\\", "/"))
+
+            # recreate pages entries for the new book, preserving titles and hierarchy as flat under new root
+            for page in src._flatten(src.root):
+                new_page_id = next(new_book._page_id)
+                new_path = f"{subdir}/{page.path}"
+                # keep the stylesheet references as they were (files copied under the subdir)
+                new_stylesheets = page.stylesheets
+                new_page = Page(new_page_id, page.title, new_path, new_stylesheets, [])
+                new_book.root.append(new_page)
+
+        return new_book
 
     ###########################################################################
     # Public Methods
