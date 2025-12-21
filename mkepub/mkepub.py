@@ -233,7 +233,7 @@ class Book:
                     "id": collec.get("id"),
                     "name": _text(collec),
                     "type": _text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "collection-type")),
-                    "number": int(_text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "group-position"))) or 0
+                    "number": int(_text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "group-position")) or 0)
                 }
             
             book_metadatas["collections"] = list(map(get_collection_metadata, metadatas.findall("package_root:meta[@property='belongs-to-collection']", PACKAGE_NAMESPACE)))
@@ -390,7 +390,16 @@ class Book:
             cover_name = "cover.jpg"
         self.metadata["cover"] = pathlib.Path('covers') / cover_name
         self._add_file(self.metadata["cover"], data)
-        
+    
+    def get_cover(self):
+        """Get the cover image data."""
+        if "cover" not in self.metadata:
+            return None
+        cover_path = self.path / self.root_folder / self.metadata["cover"]
+        with open(cover_path, "rb") as cover_file:
+            data = cover_file.read()
+            cover_file.close()
+            return data
 
     def generate_cover(self):
         image = PIL.Image.open(
@@ -405,7 +414,7 @@ class Book:
         title = self.metadata["title"]
         if "collections" in self.metadata and len(self.metadata["collections"]) > 0:
             series_name = self.metadata["collections"][0]["name"] 
-            volume_number = "Volume " + self.metadata["collections"][0]["number"]
+            volume_number = "Volume " + str(self.metadata["collections"][0]["number"])
         else:
             series_name = ""
             volume_number = ""
