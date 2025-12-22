@@ -324,6 +324,7 @@ class Book:
                 if file.is_dir():
                     continue
                 rel = file.relative_to(src_root)
+                if rel == src.metadata["cover"]: continue
                 target_rel = pathlib.Path(subdir) / rel
                 with open(file, "rb") as fh:
                     data = fh.read()
