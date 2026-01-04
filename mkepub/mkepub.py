@@ -34,7 +34,7 @@ class BookCollectionMetadata(TypedDict):
     name: str
     id: str
     type: str
-    number: int
+    number: float
 
 
 class ContributorMetadata(TypedDict):
@@ -233,7 +233,7 @@ class Book:
                     "id": collec.get("id"),
                     "name": _text(collec),
                     "type": _text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "collection-type")),
-                    "number": int(_text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "group-position")) or 0)
+                    "number": float(_text(find_refining_metadata(metadatas, PACKAGE_NAMESPACE["package_root"], collec.get("id"), "group-position")) or "0")
                 }
             
             book_metadatas["collections"] = list(map(get_collection_metadata, metadatas.findall("package_root:meta[@property='belongs-to-collection']", PACKAGE_NAMESPACE)))
