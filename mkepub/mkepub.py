@@ -297,7 +297,6 @@ class Book:
             return new_book 
 
     @classmethod
-    # TODO: Implement this and allow to merge more than two books by replacing books definition with (book_class:[type[BookT], *books:BookT)
     def merge(book_class:type[BookT], merged_metadata:BookMetadata, *books) -> BookT:
         def _safe_dir_name(title: str) -> str:
             # create a filesystem-safe directory name from title
