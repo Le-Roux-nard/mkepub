@@ -28,6 +28,7 @@ import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageFont
 import xml.etree.ElementTree as ET
+from werkzeug.utils import secure_filename
 
 
 class BookCollectionMetadata(TypedDict):
@@ -364,9 +365,13 @@ class Book:
         """
         page_id = next(self._page_id)
         page_path = 'pages/page{}.xhtml'.format(page_id) if not custom_path else custom_path
+        splitted_path = re.split(r"\\|\/", page_path)
+        purged_splitted_path = [secure_filename(part) for part in splitted_path if len(secure_filename(part)) > 0]
+        final_page_path = "/".join(purged_splitted_path)
+
         page_stylesheets = self.stylesheets if stylesheets is None else stylesheets
 
-        page = Page(page_id, title, page_path, page_stylesheets, [])
+        page = Page(page_id, title, final_page_path, page_stylesheets, [])
         self.root.append(page) if not parent else parent.children.append(page)
         self._write_page(page, content)
         return page
